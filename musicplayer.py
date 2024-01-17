@@ -16,13 +16,38 @@ from requests import request
 import requests
 
 dpg.create_context()
-dpg.create_viewport(title="Cy Music",large_icon="icon.ico",small_icon="icon.ico")
+dpg.create_viewport(title="Group",large_icon="icon.ico",small_icon="icon.ico")
 pygame.mixer.init()
 global state
 state=None
 
 global no
 no = 0
+
+# Database
+import mysql.connector
+host = "localhost"
+user = "root"
+password = ""
+database = "music_player"
+
+# Create the connection
+connection = mysql.connector.connect(
+	host=host,
+	user=user,
+	password=password,
+	database=database
+)
+
+# Check if the connection is successful
+if connection.is_connected():
+	print("Connected to the database!")
+else:
+	print("Failed to connect to the database.")
+
+# Close the connection when you're done
+connection.close()
+
 
 _DEFAULT_MUSIC_VOLUME = 0.5
 pygame.mixer.music.set_volume(0.5)
@@ -32,18 +57,78 @@ def update_volume(sender, app_data):
 
 def load_database():
 	songs = json.load(open("data/songs.json", "r+"))["songs"]
+	
 	for filename in songs:
 		dpg.add_button(label=f"{ntpath.basename(filename)}", callback=play, width=-1,
 					   height=25, user_data=filename.replace("\\", "/"), parent="list")
 		
 		dpg.add_spacer(height=2, parent="list")
-
+		def get_song_paths_from_database():
+			song_list = []
+			
+			try:
+				connection = mysql.connector.connect(
+					host=host,
+					user=user,
+					password=password,
+					database=database
+				)
+				cursor = connection.cursor()
+				
+				query = "SELECT song_path FROM Songs"
+				cursor.execute(query)
+				results = cursor.fetchall()
+				
+				for result in results:
+					song_list.append(result[0])
+				
+				cursor.close()
+				connection.close()
+				
+				print("Song paths retrieved from the database!")
+			except mysql.connector.Error as error:
+				print("Error retrieving song paths from the database:", error)
+			
+			return song_list
 
 def update_database(filename: str):
+	# MySQL
+	try:
+		connection = mysql.connector.connect(
+			host=host,
+			user=user,
+			password=password,
+			database=database
+		)
+		cursor = connection.cursor()
+
+		# Create the 'songs' table if it doesn't exist
+		cursor.execute("CREATE TABLE IF NOT EXISTS Songs (song_title VARCHAR(255), song_path VARCHAR(255))")
+
+		# Check if the song already exists in the database
+		query = "SELECT * FROM Songs WHERE song_path = %s"
+		values = (filename,)
+		cursor.execute(query, values)
+		result = cursor.fetchone()
+
+		if result is None:
+			# Song does not exist in the database, insert it
+			query = "INSERT INTO Songs (song_path) VALUES (%s)"
+			values = (filename)
+			cursor.execute(query, values)
+			connection.commit()
+			print("Song added to the database!")
+		else:
+			print("Song already exists in the database!")
+		cursor.close()
+		connection.close()
+		print("Query executed successfully!")
+	except mysql.connector.Error as error:
+		print("Error executing query:", error)
 	data = json.load(open("data/songs.json", "r+"))
 	if filename not in data["songs"]:
-		data["songs"] += [filename]
-	json.dump(data, open("data/songs.json", "r+"), indent=4)
+				data["songs"] += [filename]
+				json.dump(data, open("data/songs.json", "r+"), indent=4)
 
 def update_slider():
 	global state
@@ -161,6 +246,21 @@ def search(sender, app_data, user_data):
 			dpg.add_spacer(height=2,parent="list")
 
 def removeall():
+	try:
+		connection = mysql.connector.connect(
+		host=host,
+		user=user,
+		password=password,
+		database=database
+	)
+		cursor = connection.cursor()
+		cursor.execute("DELETE FROM Songs")
+		cursor.close()
+		connection.close()
+		print("Table dropped successfully!")
+	except mysql.connector.Error as error:
+		print("Error executing query:", error)
+  
 	songs = json.load(open("data/songs.json", "r"))
 	songs["songs"].clear()
 	json.dump(songs,open("data/songs.json", "w"),indent=4)
@@ -246,8 +346,8 @@ with dpg.window(tag="main",label="window title"):
 
 	with dpg.group(horizontal=True):
 		with dpg.child_window(width=400,tag="sidebar"):
-			dpg.add_text("cXy Music Player",color=(137, 142, 255))
-			dpg.add_text("Build by EmmanuelCy")
+			dpg.add_text("Music Player",color=(137, 142, 255))
+			dpg.add_text("Build by EmmanuelCy & Nelson")
 			dpg.add_spacer(height=2)
 			dpg.add_button(label="Support",width=-1,height=23,callback=lambda:webbrowser.open(url="https://github.com/EmmanuelCy/cxy-musicplayer"))
 			dpg.add_spacer(height=5)
